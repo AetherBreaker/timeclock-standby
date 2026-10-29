@@ -10,4 +10,9 @@ The host side of the timeclock kiosk's standby screen, from
 - `display/`, `systemd/`, `plymouth/`, `install.sh`: the standby display, its units, the boot splash, and the installer
   the clock images run.
 
-Tests: `uv run --python 3.13 pytest` for the status app; the watcher's run on Linux (`cargo test` in `watcher/`).
+Both run on Linux only (terminal ioctls, `/proc`), so their tests do too, in containers:
+
+```sh
+docker run --rm -v "$PWD":/src -w /src -e UV_PROJECT_ENVIRONMENT=/tmp/venv ghcr.io/astral-sh/uv:python3.13-trixie-slim uv run --frozen pytest
+docker run --rm -v "$PWD":/src -w /src/watcher rust:1 cargo test
+```
