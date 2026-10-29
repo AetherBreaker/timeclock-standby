@@ -60,8 +60,12 @@ set_grub() {
 set_grub GRUB_TIMEOUT 1
 set_grub GRUB_TIMEOUT_STYLE hidden
 set_grub GRUB_CMDLINE_LINUX_DEFAULT '"quiet splash loglevel=3 i915.fastboot=1"'
-update-grub 2>/dev/null
-[ ! -x /usr/local/sbin/sync-esp ] || /usr/local/sbin/sync-esp
+# Cosmetic, so a failure warns rather than failing a clock's whole install; running this again on the clock fixes it.
+if update-grub 2>/dev/null; then
+  [ ! -x /usr/local/sbin/sync-esp ] || /usr/local/sbin/sync-esp
+else
+  echo "install.sh: update-grub failed; the boot menu may still show (run install.sh again)" >&2
+fi
 
 # The splash: Debian's spinner frames, with the clock's logo above them when the device has one (it stays out of git).
 T=/usr/share/plymouth/themes/timeclock
@@ -74,7 +78,8 @@ if [ -n "$logo" ]; then
 else
   rm -f "$T/watermark.png"
 fi
-plymouth-set-default-theme -R timeclock
+plymouth-set-default-theme -R timeclock ||
+  echo "install.sh: the splash theme didn't apply; boot may show text (run install.sh again)" >&2
 
 units="timeclock-watcher.service timeclock-status.service timeclock-standby.service timeclock-tty1.service"
 # shellcheck disable=SC2086 # one word per unit
