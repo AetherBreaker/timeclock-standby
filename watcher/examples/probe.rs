@@ -16,7 +16,11 @@ fn main() {
       }
       let (input, vt_key) = inputs.drain();
       if input || vt_key.is_some() {
-        println!("{:>6.1}s devices={} input={input} vt_key={vt_key:?}", start.elapsed().as_secs_f32(), inputs.fds().len());
+        println!(
+          "{:>6.1}s devices={} input={input} vt_key={vt_key:?}",
+          start.elapsed().as_secs_f32(),
+          inputs.fds().len()
+        );
       }
       std::thread::sleep(Duration::from_millis(100));
     }
