@@ -1,0 +1,55 @@
+name: "Release: build the watcher, pack the standby files, publish"
+run-name: "Release ${{ github.ref_name }}"
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: "Release: test, build, pack (ubuntu-latest)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: actions/checkout
+        uses: actions/checkout@v4
+
+      - name: rustup target add x86_64-unknown-linux-musl
+        run: rustup target add x86_64-unknown-linux-musl
+
+      - name: cargo test
+        working-directory: watcher
+        run: cargo test
+
+      - name: cargo build --release --target x86_64-unknown-linux-musl
+        working-directory: watcher
+        run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: astral-sh/setup-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: uv run --frozen pytest
+        run: uv run --frozen pytest
+
+      # The tarball's one folder is what a clock's installer unpacks and runs install.sh from.
+      - name: tar timeclock-standby-<tag>.tar.gz, sha256sum
+        run: |
+          name="timeclock-standby-${GITHUB_REF_NAME}"
+          mkdir -p "dist/$name/bin"
+          cp watcher/target/x86_64-unknown-linux-musl/release/timeclock-watcher "dist/$name/bin/"
+          cp -r install.sh status display systemd config plymouth "dist/$name/"
+          rm -rf "dist/$name/status/tests" "dist/$name/status/__pycache__"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+
+      - name: gh release create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.tar.gz.sha256
+          --title "$GITHUB_REF_NAME"
+          --notes "Standby screen, screen watcher and boot splash for timeclock clocks: unpack and run install.sh as root."
