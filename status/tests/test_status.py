@@ -173,6 +173,7 @@ def test_tcp6_and_close_wait() -> None:
 
 def test_banner_written_atomically_and_removed(tmp_path: Path) -> None:
   path = tmp_path / "status" / "banner.json"
+  path.parent.mkdir()  # the app's folder: the app makes it, as its own user
   apply_banner(path, wanted=True, text="An update is being installed.")
   assert json.loads(path.read_text()) == {"text": "An update is being installed."}
   assert [p.name for p in path.parent.iterdir()] == ["banner.json"]
@@ -184,3 +185,18 @@ def test_banner_written_atomically_and_removed(tmp_path: Path) -> None:
 def test_image_matches_like_the_watcher() -> None:
   assert status.image_matches("ghcr.io/coollabsio/coolify-helper:1.0.20", "coollabsio/coolify-helper")
   assert not status.image_matches("ghcr.io/coollabsio/sentinel:1.1.3", "coollabsio/coolify-helper")
+
+
+def test_banner_needs_the_apps_folder(tmp_path: Path) -> None:
+  # Made by root it would lock the app (an ordinary user) out of its own status file; no folder means no app yet.
+  path = tmp_path / "status" / "banner.json"
+  apply_banner(path, wanted=True, text="An update is being installed.")
+  assert not path.parent.exists()
+
+
+def test_version_label_loses_its_v() -> None:
+  # GIT_TAG is the label's value: "v0.7.0" reads "version 0.7.0".
+  t = running_clock()
+  t.on_event(event("start", image=HELPER))
+  t.on_new_image("v0.7.0")
+  assert t.snapshot()["title"] == "Updating to version 0.7.0"

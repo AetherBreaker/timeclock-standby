@@ -78,11 +78,16 @@ def image_matches(image: str, helper: str) -> bool:
 
 
 def apply_banner(path: Path, *, wanted: bool, text: str) -> None:
-  """Write the banner file atomically, readable by the app's user, or remove it."""
+  """Write the banner file atomically, readable by the app's user, or remove it.
+
+  Never creates the folder: the app makes it as its own user, and one made by root would lock the app out of its
+  status file. No folder means no app has run yet, so nobody to show a banner to.
+  """
   if not wanted:
     path.unlink(missing_ok=True)
     return
-  path.parent.mkdir(parents=True, exist_ok=True)
+  if not path.parent.is_dir():
+    return
   fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".banner-")
   with os.fdopen(fd, "w") as f:
     json.dump({"text": text}, f)
@@ -149,8 +154,8 @@ class Tracker:
     self._change(apply)
 
   def on_new_image(self, version: str) -> None:
-    """A newly built app image's version label."""
-    self._change(lambda f: f.update(version=version, built=True) if f["updating"] else None)
+    """A newly built app image's version label (the release tag, like v0.7.0)."""
+    self._change(lambda f: f.update(version=version.removeprefix("v"), built=True) if f["updating"] else None)
 
   def on_containers(self, containers: list[dict[str, Any]]) -> None:
     """Resync from Docker's full list: at start, and after the event stream drops."""
@@ -179,7 +184,7 @@ class Tracker:
       return
     if attrs.get("com.docker.compose.service") != self.app_service:
       return
-    version = attrs.get(VERSION_LABEL)
+    version = (attrs.get(VERSION_LABEL) or "").removeprefix("v")
 
     def start(f: dict[str, Any]) -> None:
       f.update(app_exists=True, app_running=True, app_step=None, serving=False)
