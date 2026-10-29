@@ -121,7 +121,10 @@ pub fn decide(cfg: &Config, obs: &Observation, state: &mut State) -> Action {
   } else {
     obs.standby_claimed
   };
-  if target == obs.active_vt || !claimed {
+  // Never to an unclaimed terminal (at boot the splash holds the screen), except from a console to the standby's: a
+  // standby display restarted while a console showed checks in only from 1 or 7, so it waits for this switch.
+  let on_console = obs.active_vt != cfg.clock_vt && obs.active_vt != cfg.standby_vt;
+  if target == obs.active_vt || !(claimed || on_console && target == cfg.standby_vt) {
     return Action::Stay;
   }
   if state
@@ -267,6 +270,28 @@ mod tests {
     };
     let mut s = State::new(7);
     assert_eq!(decide(&c, &o(0), &mut s), Action::Stay);
+  }
+
+  #[test]
+  fn from_a_console_the_unclaimed_standby_is_still_shown() {
+    // The standby display restarted while a console showed: it only checks in from terminal 1 or 7, so the watcher
+    // must take the screen to 7 even before anything claims it, or both wait for each other.
+    let c = Config::default();
+    let mut s = State::new(2);
+    let o = |now| Observation {
+      standby_claimed: false,
+      ..obs(now, 2)
+    };
+    decide(&c, &o(0), &mut s);
+    assert_eq!(decide(&c, &o(3_000), &mut s), Action::Switch(7));
+    // Not from the clock's terminal: at boot that's the splash's.
+    let mut s = State::new(1);
+    let o = |now| Observation {
+      standby_claimed: false,
+      ..obs(now, 1)
+    };
+    decide(&c, &o(0), &mut s);
+    assert_eq!(decide(&c, &o(3_000), &mut s), Action::Stay);
   }
 
   #[test]

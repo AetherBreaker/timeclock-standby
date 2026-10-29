@@ -1,0 +1,14 @@
+[Unit]
+Description=Timeclock standby screen: Firefox on the status page, terminal 7
+After=timeclock-status.service
+
+[Service]
+Type=simple
+# Before cage takes the display; --retain-splash leaves the splash's picture up meanwhile.
+ExecStartPre=-/usr/bin/plymouth quit --retain-splash
+ExecStart=/opt/timeclock-standby/standby.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

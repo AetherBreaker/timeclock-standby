@@ -1,0 +1,14 @@
+[Unit]
+Description=Blank terminal 1 for the kiosk: no cursor, no text
+Before=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=TERM=linux
+TTYPath=/dev/tty1
+StandardOutput=tty
+ExecStart=/usr/bin/setterm --cursor off --clear all
+
+[Install]
+WantedBy=multi-user.target

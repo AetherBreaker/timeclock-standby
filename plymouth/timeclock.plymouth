@@ -1,0 +1,24 @@
+[Plymouth Theme]
+Name=Timeclock
+Description=Black with the clock's logo and Debian's spinner, matching the standby page
+ModuleName=two-step
+
+[two-step]
+ImageDir=/usr/share/plymouth/themes/timeclock
+HorizontalAlignment=.5
+VerticalAlignment=.62
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.4
+Transition=none
+TransitionDuration=0.0
+BackgroundStartColor=0x000000
+BackgroundEndColor=0x000000
+
+[boot-up]
+UseEndAnimation=false
+
+[shutdown]
+UseEndAnimation=false
+
+[reboot]
+UseEndAnimation=false
