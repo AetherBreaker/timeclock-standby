@@ -87,14 +87,16 @@ pub fn decide(cfg: &Config, obs: &Observation, state: &mut State) -> Action {
     state.not_live_since = Some(now);
   }
 
-  // The clock when live; the standby once it's been down for the delay, or at once for a deploy in deploy-start mode.
+  // The clock when live; the standby once it's been down for the delay (a connection blip shouldn't flicker the
+  // screen), at once when the clock's display is gone (nothing to blip back), or at once for a deploy in deploy-start
+  // mode.
   let down_for = state.not_live_since.map_or(Duration::ZERO, |t| now.saturating_sub(t));
   let wanted = if cfg.flip == Flip::DeployStart && obs.deploying {
     Some(cfg.standby_vt)
   } else if obs.clock_live {
     Some(cfg.clock_vt)
   } else {
-    (down_for >= cfg.standby_delay).then_some(cfg.standby_vt)
+    (down_for >= cfg.standby_delay || !obs.clock_claimed).then_some(cfg.standby_vt)
   };
 
   match state.mode {
@@ -196,6 +198,19 @@ mod tests {
     assert_eq!(decide(&c, &obs(1_000, 1), &mut s), Action::Stay);
     assert_eq!(decide(&c, &obs(3_900, 1), &mut s), Action::Stay);
     assert_eq!(decide(&c, &obs(4_000, 1), &mut s), Action::Switch(7));
+  }
+
+  #[test]
+  fn unclaimed_clock_shows_the_standby_at_once() {
+    // The kiosk's display is gone (crash, container stop): terminal 1 is black, and no blip can bring it back.
+    let c = Config::default();
+    let mut s = State::new(1);
+    decide(&c, &live(0, 1), &mut s);
+    let gone = Observation {
+      clock_claimed: false,
+      ..obs(100, 1)
+    };
+    assert_eq!(decide(&c, &gone, &mut s), Action::Switch(7));
   }
 
   #[test]
