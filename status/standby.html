@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Time clock</title>
+  <link rel="stylesheet" href="/standby.css">
+</head>
+<body data-mode="starting">
+  <main>
+    <img id="logo" src="/logo.svg" alt="" onerror="this.remove()">
+    <h1 id="title">Starting up</h1>
+    <ol id="steps"></ol>
+  </main>
+  <script>
+    // The status app sends the mode, title and steps on every change; EventSource reconnects by itself if it restarts.
+    const title = document.getElementById("title");
+    const list = document.getElementById("steps");
+    new EventSource("/events").onmessage = (event) => {
+      const snap = JSON.parse(event.data);
+      document.body.dataset.mode = snap.mode;
+      title.textContent = snap.title;
+      list.replaceChildren(...snap.steps.map((step) => {
+        const item = document.createElement("li");
+        item.className = step.state;
+        item.textContent = step.text;
+        return item;
+      }));
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Time clock</title>
+  <link rel="stylesheet" href="standby.css">
+</head>
+<body>
+  <!-- Shown from disk while the status app doesn't answer; the standby Firefox loads it instead of its error page. -->
+  <main>
+    <h1>Starting up</h1>
+    <ol><li class="active">Starting up</li></ol>
+  </main>
+  <script>
+    // Back to the live page as soon as the status app answers (no-cors: any answer at all means it's up).
+    const live = "http://127.0.0.1:8091/";
+    setInterval(() => {
+      fetch(live, { mode: "no-cors", cache: "no-store" }).then(() => location.replace(live), () => {});
+    }, 2000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+[Unit]
+Description=Timeclock standby screen's status app: live steps and the standby page
+After=timeclock-watcher.service
+Before=timeclock-standby.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/timeclock-standby/status.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

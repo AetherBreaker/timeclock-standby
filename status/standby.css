@@ -1,0 +1,99 @@
+/* The standby page, also used by fallback.html. The boot splash (plymouth/timeclock) uses the same background. */
+:root {
+  color-scheme: dark;
+  --bg: #000000; /* the logo SVG has a black box of its own */
+  --fg: #e9edf2;
+  --dim: #7c8796;
+  --accent: #4fb3ff;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "DejaVu Sans", sans-serif;
+  cursor: none;
+  user-select: none;
+}
+
+main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+}
+
+#logo {
+  max-width: 360px;
+  max-height: 150px;
+}
+
+h1 {
+  font-size: 44px;
+  font-weight: 600;
+}
+
+ol {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 540px;
+}
+
+li {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 26px;
+}
+
+li::before {
+  content: "";
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 26px;
+}
+
+li.done {
+  color: var(--dim);
+}
+
+li.done::before {
+  content: "\2713";
+  color: var(--accent);
+}
+
+li.active::before {
+  border: 3px solid var(--dim);
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+
+li.pending {
+  color: var(--dim);
+  opacity: 0.5;
+}
+
+li.pending::before {
+  border: 3px solid var(--dim);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

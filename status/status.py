@@ -16,6 +16,7 @@ import time
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -400,3 +401,102 @@ def keep_banner(tracker: Tracker, path: Path, text: str) -> None:
         pass
     with tracker.changed:
       tracker.changed.wait(timeout=5)
+
+
+# -- the page ----------------------------------------------------------------------------------------------------
+
+FILES = {"/": ("standby.html", "text/html; charset=utf-8"), "/standby.css": ("standby.css", "text/css; charset=utf-8")}
+KEEPALIVE_SECS = 15
+
+
+class StandbyServer(ThreadingHTTPServer):
+  """The page's server: what it serves from, and the tracker its event streams follow."""
+
+  daemon_threads = True
+
+  def __init__(self, port: int, tracker: Tracker, files: Path, branding: Path) -> None:
+    """Bind to localhost only; the workstation reaches it through an SSH tunnel."""
+    super().__init__(("127.0.0.1", port), Handler)
+    self.tracker, self.files, self.branding = tracker, files, branding
+
+
+class Handler(BaseHTTPRequestHandler):
+  """`/` and `/standby.css` from the files beside this one, `/logo.svg` from the branding folder, `/events` live."""
+
+  server: StandbyServer
+
+  def do_GET(self) -> None:
+    """Serve one request."""
+    path = urllib.parse.urlsplit(self.path).path
+    if path == "/events":
+      self._events()
+      return
+    if path in FILES:
+      name, kind = FILES[path]
+      self._send(self.server.files / name, kind)
+    elif path == "/logo.svg" and (logos := sorted(self.server.branding.glob("*.svg"))):
+      self._send(logos[0], "image/svg+xml")
+    else:
+      self.send_error(404)
+
+  def _send(self, file: Path, kind: str) -> None:
+    body = file.read_bytes()
+    self.send_response(200)
+    self.send_header("Content-Type", kind)
+    self.send_header("Content-Length", str(len(body)))
+    self.send_header("Cache-Control", "no-store")
+    self.end_headers()
+    self.wfile.write(body)
+
+  def _events(self) -> None:
+    # Server-Sent Events: the snapshot now and after each change, a comment every 15 s to keep the stream alive.
+    tracker = self.server.tracker
+    self.send_response(200)
+    self.send_header("Content-Type", "text/event-stream")
+    self.send_header("Cache-Control", "no-store")
+    self.end_headers()
+    self.close_connection = True
+    sent = None
+    try:
+      while True:
+        with tracker.changed:
+          if tracker.revision == sent:
+            tracker.changed.wait(timeout=KEEPALIVE_SECS)
+        snap = tracker.snapshot()
+        if snap["revision"] == sent:
+          self.wfile.write(b": keepalive\n\n")
+        else:
+          self.wfile.write(f"data: {json.dumps(snap)}\n\n".encode())
+          sent = snap["revision"]
+        self.wfile.flush()
+    except OSError:
+      return  # the page went away
+
+  def log_message(self, format: str, *args: object) -> None:  # noqa: A002 (the base class's name)
+    """Quiet: the page polls nothing, and errors show in the journal through the sources."""
+
+
+def make_server(config: dict[str, str], tracker: Tracker, files: Path) -> StandbyServer:
+  """The page's server on the configured port, not yet serving."""
+  return StandbyServer(int(config["port"]), tracker, files, Path(config["branding_dir"]))
+
+
+def main() -> None:
+  """Start every source in its own thread, then serve the page."""
+  config = load_config()
+  tracker = Tracker(config["app_service"], config["helper_image"])
+  status_dir = Path(config["status_dir"])
+  sources: list[tuple[Callable[..., None], tuple[Any, ...]]] = [
+    (follow_docker, (tracker, config)),
+    (poll_system, (tracker,)),
+    (poll_app_status, (tracker, status_dir)),
+    (poll_clock, (tracker, config)),
+    (keep_banner, (tracker, status_dir / "banner.json", config["banner_text"])),
+  ]
+  for target, args in sources:
+    threading.Thread(target=target, args=args, daemon=True, name=target.__name__).start()
+  make_server(config, tracker, Path(__file__).resolve().parent).serve_forever()
+
+
+if __name__ == "__main__":
+  main()
