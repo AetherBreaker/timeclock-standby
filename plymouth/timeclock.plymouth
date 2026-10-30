@@ -13,6 +13,8 @@ Transition=none
 TransitionDuration=0.0
 BackgroundStartColor=0x000000
 BackgroundEndColor=0x000000
+Font=DejaVu Sans 16
+TitleFont=DejaVu Sans Bold 28
 
 [boot-up]
 UseEndAnimation=false
@@ -22,3 +24,9 @@ UseEndAnimation=false
 
 [reboot]
 UseEndAnimation=false
+
+# A host update (the watcher restarts the clock for one, and the first boot after): the same splash, saying so.
+[updates]
+UseEndAnimation=false
+Title=Installing a system update
+SubTitle=The clock will be back in a minute or two. Please leave it on.
