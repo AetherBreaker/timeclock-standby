@@ -1,6 +1,6 @@
 [project]
 name = "timeclock-standby"
-version = "0.2.2"
+version = "0.2.3"
 description = "Standby screen and screen watcher for the timeclock kiosk"
 # The status app runs on Debian 13's own Python 3.13, standard library only; pytest is for its tests.
 requires-python = ">=3.13"
