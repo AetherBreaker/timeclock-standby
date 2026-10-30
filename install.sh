@@ -149,8 +149,11 @@ if $RUNNING; then
     XDG_RUNTIME_DIR=/run/user/0 systemctl --user --machine=root@ reset-failed xdg-desktop-portal-wlr.service 2>/dev/null || true
     XDG_RUNTIME_DIR=/run/user/0 systemctl --user --machine=root@ try-restart xdg-desktop-portal.service 2>/dev/null || true
   fi
-  # RustDesk picks the screen's session once, at start: restarted now, with the display up.
+  # RustDesk picks the screen's session once, at start: started again now, with the display up. Stopping the display
+  # above stopped it too (PartOf=), so a try-restart would leave it off until the next boot.
   systemctl daemon-reload
-  systemctl try-restart sweetfiresupportdesk.service
+  if systemctl is-enabled --quiet sweetfiresupportdesk.service 2>/dev/null; then
+    systemctl restart sweetfiresupportdesk.service || echo "install.sh: remote access didn't start (journalctl -u sweetfiresupportdesk)" >&2
+  fi
 fi
 echo "install.sh: done"
