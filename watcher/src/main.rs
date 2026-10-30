@@ -29,6 +29,7 @@ fn main() {
   let (mut clock_live, mut deploying) = (false, false);
   let (mut rescanned, mut live_checked, mut docker_checked) = (start, None::<Instant>, None::<Instant>);
   let mut seen: Option<(u16, bool, Option<bool>, bool)> = None;
+  let mut had_window: Option<bool> = None;
 
   loop {
     // Sleep until input arrives or the tick is up.
@@ -62,6 +63,14 @@ fn main() {
       inputs.rescan();
       rescanned = Instant::now();
     }
+    // sway answers on a console too (it only stops drawing); an unanswered socket reads as no clock window.
+    let clock_window = sway::clock_window(&cfg.sway_socket, &cfg.clock_app_id).unwrap_or(None);
+    // A new clock window (its browser restarted) gets a fresh look at the connection: a result up to LIVE_EVERY old
+    // still counts the old browser's, and would show the new window black, before its page loads.
+    if had_window == Some(false) && clock_window.is_some() {
+      live_checked = None;
+    }
+    had_window = Some(clock_window.is_some());
     if live_checked.is_none_or(|t| t.elapsed() >= LIVE_EVERY) {
       clock_live = held.update(now, &observe::unit_connections(&cfg.clock_unit, cfg.app_port));
       live_checked = Some(Instant::now());
@@ -71,8 +80,6 @@ fn main() {
       docker_checked = Some(Instant::now());
     }
     let Ok(active_vt) = observe::active_vt() else { continue };
-    // sway answers on a console too (it only stops drawing); an unanswered socket reads as no clock window.
-    let clock_window = sway::clock_window(&cfg.sway_socket, &cfg.clock_app_id).unwrap_or(None);
 
     let obs = Observation {
       now,
