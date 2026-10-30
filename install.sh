@@ -59,7 +59,8 @@ set_grub() {
 }
 set_grub GRUB_TIMEOUT 1
 set_grub GRUB_TIMEOUT_STYLE hidden
-set_grub GRUB_CMDLINE_LINUX_DEFAULT '"quiet splash loglevel=3 i915.fastboot=1"'
+# No i915.fastboot: kernel 6.9 made fastboot the default on every Intel GPU and dropped the option ("unknown parameter").
+set_grub GRUB_CMDLINE_LINUX_DEFAULT '"quiet splash loglevel=3"'
 # Cosmetic, so a failure warns rather than failing a clock's whole install; running this again on the clock fixes it.
 if update-grub 2>/dev/null; then
   [ ! -x /usr/local/sbin/sync-esp ] || /usr/local/sbin/sync-esp
