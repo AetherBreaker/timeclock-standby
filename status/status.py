@@ -358,10 +358,17 @@ def unit_connections(unit: str, port: int) -> set[int]:
   for pid in pids:
     proc = Path("/proc", pid)
     try:
-      links = [os.readlink(fd) for fd in (proc / "fd").iterdir()]
+      fds = list((proc / "fd").iterdir())
     except OSError:
       continue
-    sockets = {int(link[8:-1]) for link in links if link.startswith("socket:[")}
+    sockets: set[int] = set()
+    for fd in fds:
+      try:
+        link = os.readlink(fd)
+      except OSError:
+        continue  # closed while scanning: WebKit's network process opens and closes sockets all the time
+      if link.startswith("socket:["):
+        sockets.add(int(link[8:-1]))
     for table in ("net/tcp", "net/tcp6"):
       try:
         found |= established_to((proc / table).read_text(), port) & sockets
