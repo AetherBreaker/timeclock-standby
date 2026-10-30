@@ -67,10 +67,12 @@ else
   echo "install.sh: update-grub failed; the boot menu may still show (run install.sh again)" >&2
 fi
 
-# The splash: Debian's spinner frames, with the clock's logo above them when the device has one (it stays out of git).
+# The splash: Debian's spinner theme's images, with the clock's logo above them when the device has one (it stays out of
+# git). All of them, not just the frames: two-step refuses to show without its prompt images (lock.png and the rest) and
+# Plymouth falls back to text mode.
 T=/usr/share/plymouth/themes/timeclock
 install -d "$T"
-cp /usr/share/plymouth/themes/spinner/animation-*.png "$T"/
+cp /usr/share/plymouth/themes/spinner/*.png "$T"/
 install -m 644 "$HERE"/plymouth/timeclock.plymouth "$T"/
 logo=$(find /data/timeclock_system_files/branding -maxdepth 1 -name '*.svg' 2>/dev/null | sort | head -n1)
 if [ -n "$logo" ]; then
