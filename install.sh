@@ -37,6 +37,9 @@ install -D -m 644 "$HERE"/display/xdpw.conf /etc/xdg/xdg-desktop-portal-wlr/conf
 for u in pipewire.service pipewire.socket; do
   install -D -m 644 "$HERE"/systemd/pipewire-root.conf "/etc/systemd/user/$u.d/timeclock-root.conf"
 done
+# RustDesk's own unit, from its package: after the display, so it finds sway's session.
+install -D -m 644 "$HERE"/systemd/sweetfiresupportdesk-after-display.conf \
+  /etc/systemd/system/sweetfiresupportdesk.service.d/10-timeclock.conf
 # The first version's files: its hand-back script, its Docker ordering, the host Firefox's settings (before 0.2.0).
 rm -f /opt/timeclock-standby/handback.sh /etc/systemd/system/docker.service.d/10-after-standby.conf \
   /usr/lib/firefox-esr/distribution/policies.json /usr/lib/firefox-esr/defaults/pref/autoconfig.js \
@@ -129,5 +132,13 @@ if $RUNNING; then
   systemctl restart timeclock-watcher.service timeclock-status.service
   # shellcheck disable=SC2086
   systemctl start $units
+  # Root's session manager, if it was already running (an SSH login starts one), loaded PipeWire's units before the
+  # drop-in that lets them run as root: screen sharing stays off until it reloads (main-office, 2026-10-30).
+  if XDG_RUNTIME_DIR=/run/user/0 systemctl --user --machine=root@ daemon-reload 2>/dev/null; then
+    XDG_RUNTIME_DIR=/run/user/0 systemctl --user --machine=root@ start pipewire.socket wireplumber.service 2>/dev/null || true
+  fi
+  # RustDesk picks the screen's session once, at start: restarted now, with the display up.
+  systemctl daemon-reload
+  systemctl try-restart sweetfiresupportdesk.service
 fi
 echo "install.sh: done"
