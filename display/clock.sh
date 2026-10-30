@@ -7,9 +7,10 @@ set -eu
 CLOCK_URL=${CLOCK_URL:-http://127.0.0.1:8080/?kiosk}
 export XDG_RUNTIME_DIR=/run/user/0
 for s in "$XDG_RUNTIME_DIR"/wayland-*; do [ -S "$s" ] && export WAYLAND_DISPLAY="${s##*/}"; done
-log=$(mktemp -u /run/timeclock-clock.XXXXXX)
+# cog's log, read below, through a fifo in the unit's runtime directory: systemd removes it however the unit stops.
+log=/run/timeclock-clock/cog.log
+rm -f "$log"
 mkfifo "$log"
-trap 'rm -f "$log"' EXIT
 start="file:///opt/timeclock-standby/clock-start.html?url=$(printf %s "$CLOCK_URL" | sed 's/%/%25/g; s/&/%26/g; s/?/%3F/g')"
 cog --gapplication-app-id=local.timeclock.Clock --platform=wl --bg-color=black --webprocess-failure=restart "$start" \
   >"$log" 2>&1 &

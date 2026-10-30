@@ -1,0 +1,7 @@
+#!/bin/sh
+# /etc/grub.d/10_linux, from timeclock-standby's install.sh: Debian's own, diverted to
+# /usr/local/lib/timeclock/10_linux.distrib (package updates still reach it there), without its "Loading Linux ..." and
+# "Loading initial ramdisk ..." lines, which GRUB prints on screen at every boot, menu hidden or not.
+set -e
+entries=$(/usr/local/lib/timeclock/10_linux.distrib "$@")
+printf '%s\n' "$entries" | sed '/^[[:space:]]*echo[[:space:]].*Loading/d'

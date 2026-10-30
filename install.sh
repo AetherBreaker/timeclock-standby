@@ -76,6 +76,15 @@ set_grub GRUB_TIMEOUT 1
 set_grub GRUB_TIMEOUT_STYLE hidden
 # No i915.fastboot: kernel 6.9 made fastboot the default on every Intel GPU and dropped the option ("unknown parameter").
 set_grub GRUB_CMDLINE_LINUX_DEFAULT '"quiet splash loglevel=3"'
+# GRUB prints "Loading Linux ..." and "Loading initial ramdisk ..." at every boot, menu hidden or not, and Debian has no
+# setting for it. Its 10_linux, diverted where package updates still reach it, runs behind a wrapper that drops those
+# lines; editing it in place would hold back GRUB's updates on a changed config file.
+G=/usr/local/lib/timeclock/10_linux.distrib
+if [ "$(dpkg-divert --truename /etc/grub.d/10_linux)" != "$G" ]; then
+  install -d /usr/local/lib/timeclock
+  dpkg-divert --quiet --add --rename --divert "$G" /etc/grub.d/10_linux
+fi
+install -m 755 "$HERE"/grub/10_linux /etc/grub.d/10_linux
 # Cosmetic, so a failure warns rather than failing a clock's whole install; running this again on the clock fixes it.
 if update-grub 2>/dev/null; then
   [ ! -x /usr/local/sbin/sync-esp ] || /usr/local/sbin/sync-esp
@@ -94,8 +103,11 @@ install -m 644 "$HERE"/plymouth/timeclock.plymouth "$T"/
 logo=$(find /data/timeclock_system_files/branding -maxdepth 1 -name '*.svg' 2>/dev/null | sort | head -n1)
 if [ -n "$logo" ]; then
   rsvg-convert -h 140 "$logo" >"$T/watermark.png"
+  # The standby's start page from disk shows it too, as the status app's page does (fallback.html).
+  install -m 644 "$logo" /opt/timeclock-standby/logo.svg
 else
   echo '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>' | rsvg-convert >"$T/watermark.png"
+  rm -f /opt/timeclock-standby/logo.svg
 fi
 plymouth-set-default-theme -R timeclock ||
   echo "install.sh: the splash theme didn't apply; boot may show text (run install.sh again)" >&2
@@ -105,6 +117,8 @@ plymouth-set-default-theme -R timeclock ||
 
 units="timeclock-watcher.service timeclock-status.service timeclock-display.service timeclock-standby.service
   timeclock-clock.service timeclock-remote.service timeclock-tty1.service"
+# The first version enabled the standby into multi-user.target; it now starts with the display only.
+systemctl disable timeclock-standby.service >/dev/null 2>&1 || true
 # shellcheck disable=SC2086 # one word per unit
 systemctl enable $units >/dev/null 2>&1
 if $RUNNING; then

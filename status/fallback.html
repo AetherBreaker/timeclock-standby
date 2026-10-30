@@ -6,10 +6,18 @@
   <link rel="stylesheet" href="standby.css">
 </head>
 <body>
-  <!-- cog's start page, from disk: shown until the status app answers, so cog never shows an error page. -->
+  <!-- cog's start page, from disk: shown until the status app answers, so cog never shows an error page. Laid out as
+       the live page's first look at boot (the logo, the starting steps), so moving to it doesn't jump. -->
   <main>
+    <img id="logo" src="logo.svg" alt="" onerror="this.remove()">
     <h1>Starting up</h1>
-    <ol><li class="active">Starting up</li></ol>
+    <ol>
+      <li class="active">Starting up</li>
+      <li class="pending">Connecting to the network</li>
+      <li class="pending">Starting Docker</li>
+      <li class="pending">Starting the time clock</li>
+      <li class="pending">Opening the clock</li>
+    </ol>
   </main>
   <script>
     // On to the live page as soon as the status app answers (no-cors: any answer at all means it's up).
