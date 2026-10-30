@@ -136,6 +136,10 @@ if $RUNNING; then
   # drop-in that lets them run as root: screen sharing stays off until it reloads (main-office, 2026-10-30).
   if XDG_RUNTIME_DIR=/run/user/0 systemctl --user --machine=root@ daemon-reload 2>/dev/null; then
     XDG_RUNTIME_DIR=/run/user/0 systemctl --user --machine=root@ start pipewire.socket wireplumber.service 2>/dev/null || true
+    # A portal already running started without its capture backend (it failed without PipeWire): "missing a
+    # capability" in RustDesk until both start again.
+    XDG_RUNTIME_DIR=/run/user/0 systemctl --user --machine=root@ reset-failed xdg-desktop-portal-wlr.service 2>/dev/null || true
+    XDG_RUNTIME_DIR=/run/user/0 systemctl --user --machine=root@ try-restart xdg-desktop-portal.service 2>/dev/null || true
   fi
   # RustDesk picks the screen's session once, at start: restarted now, with the display up.
   systemctl daemon-reload
