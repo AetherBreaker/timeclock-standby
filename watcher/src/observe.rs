@@ -151,6 +151,23 @@ pub fn helper_running(socket: &Path, helper: &str) -> bool {
   ask().is_ok_and(|a| helper_in_containers(&a, helper))
 }
 
+/// GET `path` from Docker's API over its socket: the body of a 200 answer.
+pub fn docker_get(socket: &Path, path: &str) -> io::Result<String> {
+  let mut s = UnixStream::connect(socket)?;
+  s.set_read_timeout(Some(Duration::from_secs(5)))?;
+  s.set_write_timeout(Some(Duration::from_secs(5)))?;
+  s.write_all(format!("GET {path} HTTP/1.0\r\nHost: docker\r\n\r\n").as_bytes())?;
+  let mut answer = String::new();
+  s.read_to_string(&mut answer)?;
+  let (head, body) = answer
+    .split_once("\r\n\r\n")
+    .ok_or_else(|| io::Error::other("no HTTP answer"))?;
+  if !head.starts_with("HTTP/1.0 200") && !head.starts_with("HTTP/1.1 200") {
+    return Err(io::Error::other(head.lines().next().unwrap_or("").to_string()));
+  }
+  Ok(body.to_string())
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

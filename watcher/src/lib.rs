@@ -4,3 +4,4 @@ pub mod decide;
 pub mod keys;
 pub mod observe;
 pub mod sway;
+pub mod update;

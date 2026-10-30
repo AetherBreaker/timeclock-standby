@@ -21,7 +21,7 @@ pub enum Json {
 }
 
 impl Json {
-  fn get(&self, key: &str) -> Option<&Json> {
+  pub fn get(&self, key: &str) -> Option<&Json> {
     match self {
       Json::Object(fields) => fields.iter().find(|(k, _)| k == key).map(|(_, v)| v),
       _ => None,
