@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import status
-from status import Tracker, apply_banner, has_established_to
+from status import Tracker, apply_banner, established_to, held
 
 APP = "timeclock-system"
 HELPER = "coollabsio/coolify-helper:1.0.19"
@@ -29,7 +29,7 @@ def steps(t: Tracker) -> list[tuple[str, str]]:
 def running_clock() -> Tracker:
   t = Tracker()
   t.on_system(network_ok=True, docker_active=True)
-  t.on_containers([container(APP), container("kiosk")])
+  t.on_containers([container(APP)])
   t.on_app_serving(serving=True)
   t.on_clock_live(live=True)
   return t
@@ -147,7 +147,7 @@ def test_resync_after_stream_loss_matches_containers() -> None:
   # Review Focus 2: the event stream dropped mid-deploy and the deploy failed meanwhile; the resync must end it.
   t = running_clock()
   t.on_event(event("start", image=HELPER))
-  t.on_containers([container(APP), container("kiosk")])
+  t.on_containers([container(APP)])
   assert t.snapshot()["mode"] == "starting"
   assert not t.banner_wanted
 
@@ -163,12 +163,35 @@ def test_revision_counts_only_changes() -> None:
 
 
 def test_tcp6_and_close_wait() -> None:
-  # Review Focus 5.
-  header = "  sl  local_address                         remote_address                        st tx_queue\n"
-  line = "   1: 0000000000000000FFFF0000030012AC:C944 0000000000000000FFFF0000020012AC:1F90 {} 00000000:00000000\n"
-  assert has_established_to(header + line.format("01"), 8080)
-  assert not has_established_to(header + line.format("08"), 8080)
-  assert not has_established_to(header + line.format("01"), 8081)
+  header = "  sl  local_address                         remote_address                        st tx_queue ... inode\n"
+  line = (
+    "   1: 0000000000000000FFFF0000030012AC:C944 0000000000000000FFFF0000020012AC:1F90 {} 00000000:00000000"
+    " 02:00000306 00000000     0        0 49018 2 00000000d979db27 20 4 28 10 -1\n"
+  )
+  assert established_to(header + line.format("01"), 8080) == {49018}
+  assert not established_to(header + line.format("08"), 8080)
+  assert not established_to(header + line.format("01"), 8081)
+
+
+def test_a_connection_counts_once_it_has_held() -> None:
+  first_seen: dict[int, float] = {}
+  assert not held(first_seen, 0.0, {7})
+  assert held(first_seen, 1.0, {7})
+
+
+def test_brief_connections_never_count() -> None:
+  # Docker's proxy accepting a probe while the new app starts: a new socket each check, gone by the next.
+  first_seen: dict[int, float] = {}
+  for t in range(5):
+    assert not held(first_seen, float(t), {100 + t} if t % 2 == 0 else set())
+
+
+def test_a_dropped_connection_starts_over() -> None:
+  first_seen: dict[int, float] = {}
+  held(first_seen, 0.0, {7})
+  held(first_seen, 0.5, set())
+  assert not held(first_seen, 1.0, {7})
+  assert held(first_seen, 2.0, {7})
 
 
 def test_banner_written_atomically_and_removed(tmp_path: Path) -> None:

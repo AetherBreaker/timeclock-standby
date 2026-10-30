@@ -4,11 +4,9 @@ Spec: timeclock-system's docs/superpowers/specs/2026-10-29-standby-screen-design
 Python 3.13 with the standard library only (not the clock app's 3.14), so a clock can be fixed by editing this file.
 """
 
-import fcntl
 import json
 import os
 import socket
-import struct
 import subprocess
 import tempfile
 import threading
@@ -28,15 +26,15 @@ DEFAULTS = {
   "branding_dir": "/data/timeclock_system_files/branding",
   "docker_socket": "/var/run/docker.sock",
   "app_service": "timeclock-system",
-  "kiosk_service": "kiosk",
   "helper_image": "coollabsio/coolify-helper",
   "app_port": "8080",
-  "browser_process": "firefox-esr",
-  "clock_vt": "1",
+  "clock_unit": "timeclock-clock.service",
 }
-KDGETMODE, KD_GRAPHICS = 0x4B3B, 1
-# Columns of a `/proc/net/tcp` line: sl, local address, remote address, state.
-REMOTE, STATE = 2, 3
+# Columns of a `/proc/net/tcp` line: sl, local address, remote address, state, ..., inode.
+REMOTE, STATE, INODE = 2, 3, 9
+# How long the clock browser's connection must last to count (the watcher's rule): Docker's port proxy accepts one
+# before the app listens and closes it when the app refuses.
+HOLD_SECS = 1.0
 VERSION_LABEL = "org.opencontainers.image.version"
 
 
@@ -58,14 +56,24 @@ def load_config(path: Path = CONFIG_PATH) -> dict[str, str]:
   return config
 
 
-def has_established_to(table: str, port: int) -> bool:
-  """Whether a `/proc/net/tcp` or `tcp6` table holds an ESTABLISHED (`01`) connection to remote `port`."""
+def established_to(table: str, port: int) -> set[int]:
+  """The socket inodes of ESTABLISHED (`01`) connections to remote `port` in a `/proc/net/tcp` or `tcp6` table."""
   remote_port = f":{port:04X}"
+  found = set()
   for line in table.splitlines()[1:]:
     fields = line.split()
-    if len(fields) > STATE and fields[STATE] == "01" and fields[REMOTE].endswith(remote_port):
-      return True
-  return False
+    if len(fields) > INODE and fields[STATE] == "01" and fields[REMOTE].endswith(remote_port):
+      found.add(int(fields[INODE]))
+  return found
+
+
+def held(first_seen: dict[int, float], now: float, current: set[int]) -> bool:
+  """Record this check's connections in `first_seen`; whether one has lasted `HOLD_SECS`."""
+  for inode in set(first_seen) - current:
+    del first_seen[inode]
+  for inode in current:
+    first_seen.setdefault(inode, now)
+  return any(now - t >= HOLD_SECS for t in first_seen.values())
 
 
 def image_matches(image: str, helper: str) -> bool:
@@ -140,7 +148,7 @@ class Tracker:
     self._change(lambda f: f.update(serving=serving))
 
   def on_clock_live(self, *, live: bool) -> None:
-    """Whether the kiosk shows a working clock (the watcher's test)."""
+    """Whether the clock browser holds its connection to the app (the watcher's test)."""
     self._change(lambda f: f.update(live=live))
 
   def on_app_status(self, step: str, version: str) -> None:
@@ -337,36 +345,29 @@ def poll_app_status(tracker: Tracker, status_dir: Path) -> None:
     time.sleep(1)
 
 
-def is_claimed(vt: int) -> bool:
-  """Whether a display holds terminal `vt`: it's in graphics mode."""
-  try:
-    fd = os.open(f"/dev/tty{vt}", os.O_RDONLY | os.O_NOCTTY)
-  except OSError:
-    return False
-  try:
-    mode = fcntl.ioctl(fd, KDGETMODE, struct.pack("i", 0))
-    return struct.unpack("i", mode)[0] == KD_GRAPHICS
-  except OSError:
-    return False
-  finally:
-    os.close(fd)
+def unit_connections(unit: str, port: int) -> set[int]:
+  """Sockets held by a process of systemd `unit` that are ESTABLISHED to `port` in its network namespace.
 
-
-def clock_connection(browser: str, port: int) -> bool:
-  """The kiosk's browser (outside the host's network namespace) holds a connection to the app (the watcher's rule)."""
+  The watcher's rule: per process, since this app's own favicon probe also connects to the app.
+  """
   try:
-    host_ns = os.readlink("/proc/1/ns/net")
+    pids = Path(f"/sys/fs/cgroup/system.slice/{unit}/cgroup.procs").read_text().split()
   except OSError:
-    return False
-  for proc in Path("/proc").iterdir():
+    return set()
+  found: set[int] = set()
+  for pid in pids:
+    proc = Path("/proc", pid)
     try:
-      if (proc / "comm").read_text().rstrip("\n") != browser or os.readlink(proc / "ns/net") == host_ns:
-        continue
-      if any(has_established_to((proc / t).read_text(), port) for t in ("net/tcp", "net/tcp6")):
-        return True
+      links = [os.readlink(fd) for fd in (proc / "fd").iterdir()]
     except OSError:
       continue
-  return False
+    sockets = {int(link[8:-1]) for link in links if link.startswith("socket:[")}
+    for table in ("net/tcp", "net/tcp6"):
+      try:
+        found |= established_to((proc / table).read_text(), port) & sockets
+      except OSError:
+        continue
+  return found
 
 
 def app_serving(config: dict[str, str]) -> bool:
@@ -385,9 +386,9 @@ def app_serving(config: dict[str, str]) -> bool:
 
 def poll_clock(tracker: Tracker, config: dict[str, str]) -> None:
   """Whether the clock is live (as the watcher sees it), and while it isn't, whether the app already serves; every 1 s."""
-  vt, port = int(config["clock_vt"]), int(config["app_port"])
+  first_seen: dict[int, float] = {}
   while True:
-    live = is_claimed(vt) and clock_connection(config["browser_process"], port)
+    live = held(first_seen, time.monotonic(), unit_connections(config["clock_unit"], int(config["app_port"])))
     tracker.on_clock_live(live=live)
     tracker.on_app_serving(serving=live or app_serving(config))
     time.sleep(1)
