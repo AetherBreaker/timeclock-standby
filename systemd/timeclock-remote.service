@@ -5,7 +5,7 @@ Before=sweetfiresupportdesk.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/timeclock-standby/remote.sh
+ExecStart=/usr/libexec/timeclock-standby/remote.sh
 
 [Install]
 WantedBy=multi-user.target

@@ -5,7 +5,7 @@ Before=timeclock-display.service timeclock-standby.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/timeclock-standby/status.py
+ExecStart=/usr/bin/python3 /usr/libexec/timeclock-standby/status.py
 Restart=always
 RestartSec=1
 

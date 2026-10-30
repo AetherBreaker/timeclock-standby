@@ -11,7 +11,7 @@ Conflicts=getty@tty7.service
 
 [Service]
 Type=simple
-ExecStart=/opt/timeclock-standby/display.sh
+ExecStart=/usr/libexec/timeclock-standby/display.sh
 User=root
 # A login session on terminal 7 (logind, through /etc/pam.d/timeclock-display): sway takes the screen through it, and
 # RustDesk finds the screen by it.

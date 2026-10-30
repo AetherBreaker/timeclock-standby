@@ -7,7 +7,7 @@
 </head>
 <body>
   <!-- The clock browser's start page, from disk and hidden (sway's scratchpad): moves to the clock once the app answers,
-       so cog's first load of the clock never fails while the app starts. clock.sh passes the clock's address. -->
+       so the kiosk's first load of the clock never fails while the app starts. clock.sh passes the clock's address. -->
   <script>
     const clock = new URLSearchParams(location.search).get("url") || "http://127.0.0.1:8080/?kiosk";
     const favicon = new URL("/favicon.ico", clock).href;
