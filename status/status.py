@@ -242,7 +242,9 @@ class Tracker:
       items.append(("Opening the clock", f["live"] and f["new_started"]))
     else:
       title = "Starting up"
-      items = [("Starting up", True), ("Connecting to the network", f["network_ok"]), ("Starting Docker", f["docker_active"])]
+      # A running app proves Docker is up: Docker starts containers before docker.service reports active.
+      docker_up = f["docker_active"] or f["app_running"]
+      items = [("Starting up", True), ("Connecting to the network", f["network_ok"]), ("Starting Docker", docker_up)]
       if f["docker_active"] and not f["app_exists"]:
         title = "Waiting for setup"
         items.append(("Waiting for setup", False))

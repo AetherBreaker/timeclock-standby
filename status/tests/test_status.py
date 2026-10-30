@@ -223,3 +223,12 @@ def test_version_label_loses_its_v() -> None:
   t.on_event(event("start", image=HELPER))
   t.on_new_image("v0.7.0")
   assert t.snapshot()["title"] == "Updating to version 0.7.0"
+
+
+def test_docker_is_done_once_the_app_runs() -> None:
+  # Docker starts the app's container while docker.service is still activating (it reports ready only after restoring
+  # containers): the clock's step must not finish before Docker's.
+  t = Tracker()
+  t.on_system(network_ok=True, docker_active=False)
+  t.on_event(event("start", service=APP))
+  assert steps(t)[2:4] == [("Starting Docker", "done"), ("Starting the time clock", "done")]
