@@ -41,7 +41,7 @@ jobs:
           name="timeclock-standby-${GITHUB_REF_NAME}"
           mkdir -p "dist/$name/bin"
           cp watcher/target/x86_64-unknown-linux-musl/release/timeclock-watcher "dist/$name/bin/"
-          cp -r install.sh status display systemd config plymouth "dist/$name/"
+          cp -r install.sh status display systemd config plymouth grub "dist/$name/"
           rm -rf "dist/$name/status/tests" "dist/$name/status/__pycache__"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
