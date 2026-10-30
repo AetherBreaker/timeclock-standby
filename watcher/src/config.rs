@@ -29,6 +29,13 @@ pub struct Config {
   pub app_port: u16,
   pub helper_image: String,
   pub docker_socket: PathBuf,
+  /// The host updater: the host image (a channel is a tag on it), the app's compose service (its container's variables
+  /// set the updates), and its timings.
+  pub host_image: String,
+  pub app_service: String,
+  pub update_check_every: Duration,
+  pub update_idle: Duration,
+  pub update_health_wait: Duration,
 }
 
 impl Default for Config {
@@ -46,6 +53,11 @@ impl Default for Config {
       app_port: 8080,
       helper_image: "coollabsio/coolify-helper".into(),
       docker_socket: "/var/run/docker.sock".into(),
+      host_image: "ghcr.io/aetherbreaker/timeclock-host".into(),
+      app_service: "timeclock-system".into(),
+      update_check_every: Duration::from_secs(60),
+      update_idle: Duration::from_secs(60),
+      update_health_wait: Duration::from_secs(600),
     }
   }
 }
@@ -96,6 +108,11 @@ pub fn parse_config(text: &str) -> Result<Config, String> {
       "app_port" => c.app_port = small()?,
       "helper_image" => c.helper_image = value.into(),
       "docker_socket" => c.docker_socket = value.into(),
+      "host_image" => c.host_image = value.into(),
+      "app_service" => c.app_service = value.into(),
+      "update_check_secs" => c.update_check_every = Duration::from_secs(secs()?.max(10)),
+      "update_idle_secs" => c.update_idle = Duration::from_secs(secs()?),
+      "update_health_secs" => c.update_health_wait = Duration::from_secs(secs()?),
       _ => return Err(format!("line {n}: unknown key {key}")),
     }
   }

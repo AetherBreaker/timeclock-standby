@@ -1,10 +1,13 @@
 //! The screen watcher's loop: observe, decide, act, every 100 ms or sooner on input. Nothing talks to it; it acts
 //! through sway's control socket (the clock window) and the kernel's terminal calls (consoles).
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
 use std::time::{Duration, Instant};
 use timeclock_watcher::config::{Config, Flip, parse_config};
 use timeclock_watcher::decide::{Action, Observation, State, decide};
 use timeclock_watcher::keys::Inputs;
-use timeclock_watcher::{observe, sway};
+use timeclock_watcher::{observe, sway, update};
 
 const CONFIG: &str = "/etc/timeclock/watcher.conf";
 const TICK: Duration = Duration::from_millis(100);
@@ -22,6 +25,12 @@ fn main() {
   };
   eprintln!("watching: {cfg:?}");
   let start = Instant::now();
+  // The host updater runs beside the loop; it reads when input last came (ms after `start`) to reboot only when idle.
+  let last_input_ms = Arc::new(AtomicU64::new(u64::MAX));
+  {
+    let (cfg, last_input_ms) = (cfg.clone(), Arc::clone(&last_input_ms));
+    thread::spawn(move || update::run_updater(cfg, start, last_input_ms));
+  }
   let mut inputs = Inputs::default();
   let mut state = State::new(&cfg, observe::active_vt().unwrap_or(cfg.display_vt), Duration::ZERO);
   let mut held = observe::Held::default();
@@ -55,6 +64,7 @@ fn main() {
     let (input, vt_key) = inputs.drain();
     if input {
       last_input = Some(now);
+      last_input_ms.store(now.as_millis() as u64, Ordering::Relaxed);
     }
     if let Some(n) = vt_key {
       last_vt_key = Some((now, n));
