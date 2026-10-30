@@ -24,9 +24,6 @@ done
 systemctl disable seatd.service >/dev/null 2>&1 || true
 ! $RUNNING || systemctl stop seatd.service >/dev/null 2>&1 || true
 
-# The first version's display (cage on terminal 7) holds the terminal sway needs: stop it before anything starts.
-! $RUNNING || systemctl stop timeclock-standby.service timeclock-clock.service timeclock-display.service 2>/dev/null || true
-
 # The programs, the pages and the display.
 install -m 755 "$WATCHER" /usr/local/sbin/timeclock-watcher
 install -d /opt/timeclock-standby
@@ -50,6 +47,11 @@ install -d /etc/timeclock
 for f in watcher.conf standby.conf; do
   if [ ! -e "/etc/timeclock/$f" ] || ! grep -qv '^[[:space:]]*\(#.*\)\?$' "/etc/timeclock/$f"; then
     install -m 644 "$HERE/config/$f" "/etc/timeclock/$f"
+  else
+    # An edited file keeps its settings, but not the keys 0.2.0 retired: the status app refuses unknown keys and the
+    # watcher falls back to its defaults.
+    sed -i 's/^\([[:space:]]*\)\(clock_vt\|standby_vt\|browser_process\|kiosk_service\)\([[:space:]]*=\)/\1# retired in 0.2.0: \2\3/' \
+      "/etc/timeclock/$f"
   fi
 done
 
@@ -107,6 +109,9 @@ units="timeclock-watcher.service timeclock-status.service timeclock-display.serv
 systemctl enable $units >/dev/null 2>&1
 if $RUNNING; then
   systemctl daemon-reload
+  # Only now, after the slow steps above, so the screen is down for seconds, not the whole install. Stopping the
+  # display stops both browsers (BindsTo=), and stops the first version's cage standby, which held terminal 7.
+  systemctl stop timeclock-standby.service timeclock-clock.service timeclock-display.service
   systemctl restart timeclock-watcher.service timeclock-status.service
   # shellcheck disable=SC2086
   systemctl start $units
