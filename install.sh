@@ -1,8 +1,9 @@
 #!/bin/sh
-# Install or update the standby screen, the screen watcher and the boot splash on a clock (timeclock-system's
-# docs/superpowers/specs/2026-10-29-standby-screen-design.md, §8-9). Run as root from an unpacked release, or from this
-# repository with the watcher built. Safe to run again; settings in /etc/timeclock/*.conf are never overwritten. The
-# image's installer runs it in its chroot, where nothing is started (no systemd there).
+# Install or update the clock's display (sway with the standby and clock browsers), the screen watcher, the status app,
+# remote access and the boot splash (timeclock-system's docs/superpowers/specs/2026-10-29-standby-screen-design.md,
+# §8-9). Run as root from an unpacked release, or from this repository with the watcher built. Safe to run again;
+# settings in /etc/timeclock/*.conf are kept once edited. The image's installer runs it in its chroot, where nothing is
+# started (no systemd there).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 WATCHER=$HERE/bin/timeclock-watcher # in a release
@@ -11,38 +12,50 @@ WATCHER=$HERE/bin/timeclock-watcher # in a release
 RUNNING=false
 [ ! -d /run/systemd/system ] || RUNNING=true
 
-# The image's preseed installs these; a clock installed before the standby existed needs them now.
+# The image's preseed installs these; a clock installed before needs them now.
 missing=""
-for p in python3 perl cage seatd cog plymouth plymouth-themes librsvg2-bin; do
+for p in python3 perl sway swaybg cog pipewire wireplumber xdg-desktop-portal xdg-desktop-portal-wlr dbus-user-session \
+  plymouth plymouth-themes librsvg2-bin; do
   dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "ok installed" || missing="$missing $p"
 done
 # shellcheck disable=SC2086 # one word per package
 [ -z "$missing" ] || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $missing
-# Debian's seatd package runs a system seatd holding /run/seatd.sock; the standby starts its own with seatd-launch.
+# sway takes the screen through logind's session (timeclock-display.service); a running seatd would come first.
 systemctl disable seatd.service >/dev/null 2>&1 || true
 ! $RUNNING || systemctl stop seatd.service >/dev/null 2>&1 || true
 
-# The programs, the page and the standby display.
+# The first version's display (cage on terminal 7) holds the terminal sway needs: stop it before anything starts.
+! $RUNNING || systemctl stop timeclock-standby.service timeclock-clock.service timeclock-display.service 2>/dev/null || true
+
+# The programs, the pages and the display.
 install -m 755 "$WATCHER" /usr/local/sbin/timeclock-watcher
 install -d /opt/timeclock-standby
 install -m 644 "$HERE"/status/status.py "$HERE"/status/standby.html "$HERE"/status/standby.css \
-  "$HERE"/status/fallback.html /opt/timeclock-standby/
-install -m 755 "$HERE"/display/standby.sh "$HERE"/display/handback.sh /opt/timeclock-standby/
-# Before 0.2.0 the standby ran the host's Firefox, with these settings.
-rm -f /usr/lib/firefox-esr/distribution/policies.json /usr/lib/firefox-esr/defaults/pref/autoconfig.js \
+  "$HERE"/status/fallback.html "$HERE"/display/clock-start.html "$HERE"/display/sway.conf /opt/timeclock-standby/
+install -m 755 "$HERE"/display/display.sh "$HERE"/display/standby.sh "$HERE"/display/clock.sh "$HERE"/display/remote.sh \
+  /opt/timeclock-standby/
+install -m 644 "$HERE"/systemd/timeclock-display.pam /etc/pam.d/timeclock-display
+# Screen sharing for RustDesk, in root's session beside sway.
+install -D -m 644 "$HERE"/display/xdpw.conf /etc/xdg/xdg-desktop-portal-wlr/config
+for u in pipewire.service pipewire.socket; do
+  install -D -m 644 "$HERE"/systemd/pipewire-root.conf "/etc/systemd/user/$u.d/timeclock-root.conf"
+done
+# The first version's files: its hand-back script, its Docker ordering, the host Firefox's settings (before 0.2.0).
+rm -f /opt/timeclock-standby/handback.sh /etc/systemd/system/docker.service.d/10-after-standby.conf \
+  /usr/lib/firefox-esr/distribution/policies.json /usr/lib/firefox-esr/defaults/pref/autoconfig.js \
   /usr/lib/firefox-esr/standby.cfg
 
-# Settings: written once, then left to the clock.
+# Settings: written when absent or still the untouched template (every line a comment), then left to the clock.
 install -d /etc/timeclock
 for f in watcher.conf standby.conf; do
-  [ -e "/etc/timeclock/$f" ] || install -m 644 "$HERE/config/$f" "/etc/timeclock/$f"
+  if [ ! -e "/etc/timeclock/$f" ] || ! grep -qv '^[[:space:]]*\(#.*\)\?$' "/etc/timeclock/$f"; then
+    install -m 644 "$HERE/config/$f" "/etc/timeclock/$f"
+  fi
 done
 
-# The units, in boot order: watcher, status app, standby display, then Docker.
 install -m 644 "$HERE"/systemd/*.service /etc/systemd/system/
-install -D -m 644 "$HERE"/systemd/docker-after-standby.conf /etc/systemd/system/docker.service.d/10-after-standby.conf
 
-# The console: no login prompt on the kiosk's terminal, a 5-minute logout on 2-6, no kernel messages on screen.
+# The console: no login prompt on terminal 1, a 5-minute logout on 2-6, no kernel messages on screen.
 systemctl mask getty@tty1.service >/dev/null
 ! $RUNNING || systemctl stop getty@tty1.service
 install -m 644 "$HERE"/config/timeclock-tmout.sh /etc/profile.d/timeclock-tmout.sh
@@ -68,9 +81,10 @@ else
   echo "install.sh: update-grub failed; the boot menu may still show (run install.sh again)" >&2
 fi
 
-# The splash: Debian's spinner theme's images, with the clock's logo above them when the device has one (it stays out of
+# The splash: Debian's spinner theme's images, with the clock's logo centred when the device has one (it stays out of
 # git). All of them, not just the frames: two-step refuses to show without its prompt images (lock.png and the rest) and
-# Plymouth falls back to text mode.
+# Plymouth falls back to text mode. sway's background is the same logo, so splash to sway changes only the spinner;
+# without a logo it's an empty image, which keeps sway's config valid.
 T=/usr/share/plymouth/themes/timeclock
 install -d "$T"
 cp /usr/share/plymouth/themes/spinner/*.png "$T"/
@@ -79,17 +93,22 @@ logo=$(find /data/timeclock_system_files/branding -maxdepth 1 -name '*.svg' 2>/d
 if [ -n "$logo" ]; then
   rsvg-convert -h 140 "$logo" >"$T/watermark.png"
 else
-  rm -f "$T/watermark.png"
+  echo '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>' | rsvg-convert >"$T/watermark.png"
 fi
 plymouth-set-default-theme -R timeclock ||
   echo "install.sh: the splash theme didn't apply; boot may show text (run install.sh again)" >&2
 
-units="timeclock-watcher.service timeclock-status.service timeclock-standby.service timeclock-tty1.service"
+# Remote access: in the chroot this installs RustDesk's dependencies; its service comes at first boot (remote.sh).
+/opt/timeclock-standby/remote.sh || echo "install.sh: remote access didn't install (timeclock-remote retries at boot)" >&2
+
+units="timeclock-watcher.service timeclock-status.service timeclock-display.service timeclock-standby.service
+  timeclock-clock.service timeclock-remote.service timeclock-tty1.service"
 # shellcheck disable=SC2086 # one word per unit
 systemctl enable $units >/dev/null 2>&1
 if $RUNNING; then
   systemctl daemon-reload
+  systemctl restart timeclock-watcher.service timeclock-status.service
   # shellcheck disable=SC2086
-  systemctl restart $units
+  systemctl start $units
 fi
 echo "install.sh: done"
