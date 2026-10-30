@@ -17,7 +17,10 @@ while :; do
   case "$prev" in 1 | "$OWN") break ;; esac
   sleep 1
 done
-perl -e 'open(T, "<", "/dev/tty0") or die "tty0: $!"; ioctl(T, 0x5606, $ARGV[0] + 0) or die "VT_ACTIVATE: $!";
+# Graphics mode first (KDSETMODE), as seatd sets it a moment later anyway: the kernel then doesn't repaint the terminal as
+# a black text console on the switch, and the screen keeps its last picture (the clock, or the boot splash) until cage draws.
+perl -e 'open(C, "<", "/dev/tty$ARGV[0]") or die "tty$ARGV[0]: $!"; ioctl(C, 0x4B3A, 1) or die "KDSETMODE: $!";
+  open(T, "<", "/dev/tty0") or die "tty0: $!"; ioctl(T, 0x5606, $ARGV[0] + 0) or die "VT_ACTIVATE: $!";
   ioctl(T, 0x5607, $ARGV[0] + 0) or die "VT_WAITACTIVE: $!"' "$OWN"
 exec seatd-launch -- cage -s -- /opt/timeclock-standby/handback.sh "$OWN" "$prev" \
   firefox-esr --profile "$PROFILE" --kiosk http://127.0.0.1:8091/
