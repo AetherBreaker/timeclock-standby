@@ -1,6 +1,5 @@
 [Unit]
-Description=Blank terminal 1 for the kiosk: no cursor, no text
-Before=docker.service
+Description=Blank terminal 1 (the splash's at boot, then unused): no cursor, no text
 
 [Service]
 Type=oneshot

@@ -1,4 +1,6 @@
-//! What the watcher reads from the machine: the kernel's terminal state, the kiosk's connection, Docker's containers.
+//! What the watcher reads from the machine: the kernel's terminal state, the clock browser's connection, Docker's
+//! containers.
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
@@ -47,30 +49,71 @@ pub fn activate_vt(vt: u16) -> io::Result<()> {
   }
 }
 
-/// Whether a `/proc/net/tcp` or `tcp6` table holds an ESTABLISHED (state `01`) connection to remote `port`.
-pub fn has_established_to(table: &str, port: u16) -> bool {
+/// The socket inodes of ESTABLISHED (state `01`) connections to remote `port` in a `/proc/net/tcp` or `tcp6` table.
+pub fn established_to(table: &str, port: u16) -> Vec<u64> {
   let remote_port = format!(":{port:04X}");
-  table.lines().skip(1).any(|line| {
-    let mut fields = line.split_whitespace().skip(2); // sl, local address
-    let remote = fields.next();
-    fields.next() == Some("01") && remote.is_some_and(|r| r.ends_with(&remote_port))
-  })
+  table
+    .lines()
+    .skip(1)
+    .filter_map(|line| {
+      // sl, local address, remote address, state, queues, timer, retransmits, uid, timeout, inode
+      let f: Vec<&str> = line.split_whitespace().collect();
+      (f.len() > 9 && f[2].ends_with(&remote_port) && f[3] == "01").then(|| f[9].parse().ok())?
+    })
+    .collect()
 }
 
-/// The kiosk's browser holds a connection to the app: a process named `browser` outside the host's network
-/// namespace (the standby's Firefox runs in the host's) with an ESTABLISHED connection to `port`.
-pub fn clock_connection(browser: &str, port: u16) -> bool {
-  let Ok(host_ns) = fs::read_link("/proc/1/ns/net") else {
-    return false;
+/// The clock browser's connections to the app: sockets held by a process of systemd `unit` that are ESTABLISHED to
+/// `port` in that process's network namespace. Per process, not per port: the status app's favicon probe also
+/// connects to the app.
+pub fn unit_connections(unit: &str, port: u16) -> HashSet<u64> {
+  let Ok(pids) = fs::read_to_string(format!("/sys/fs/cgroup/system.slice/{unit}/cgroup.procs")) else {
+    return HashSet::new();
   };
-  let Ok(procs) = fs::read_dir("/proc") else { return false };
-  procs.flatten().map(|e| e.path()).any(|dir| {
-    fs::read_to_string(dir.join("comm")).is_ok_and(|c| c.trim_end() == browser)
-      && fs::read_link(dir.join("ns/net")).is_ok_and(|ns| ns != host_ns)
-      && ["net/tcp", "net/tcp6"]
-        .iter()
-        .any(|t| fs::read_to_string(dir.join(t)).is_ok_and(|s| has_established_to(&s, port)))
-  })
+  let mut found = HashSet::new();
+  for pid in pids.lines() {
+    let dir = Path::new("/proc").join(pid);
+    let Ok(fds) = fs::read_dir(dir.join("fd")) else {
+      continue;
+    };
+    let sockets: HashSet<u64> = fds
+      .flatten()
+      .filter_map(|fd| fs::read_link(fd.path()).ok())
+      .filter_map(|target| {
+        let t = target.to_string_lossy();
+        t.strip_prefix("socket:[")?.strip_suffix(']')?.parse().ok()
+      })
+      .collect();
+    if sockets.is_empty() {
+      continue;
+    }
+    for table in ["net/tcp", "net/tcp6"] {
+      let text = fs::read_to_string(dir.join(table)).unwrap_or_default();
+      found.extend(established_to(&text, port).into_iter().filter(|i| sockets.contains(i)));
+    }
+  }
+  found
+}
+
+/// How long a connection must last to count: Docker's port proxy accepts one before the app listens and closes it
+/// when the app refuses, so a start page's probe or a page's reconnect attempt is seen briefly while a new app starts.
+pub const HOLD: Duration = Duration::from_secs(1);
+
+/// Connections across checks: the clock is live once one of them has been seen for `HOLD`.
+#[derive(Debug, Default)]
+pub struct Held {
+  first_seen: HashMap<u64, Duration>,
+}
+
+impl Held {
+  /// Record this check's connections; whether one has held.
+  pub fn update(&mut self, now: Duration, current: &HashSet<u64>) -> bool {
+    self.first_seen.retain(|inode, _| current.contains(inode));
+    for &inode in current {
+      self.first_seen.entry(inode).or_insert(now);
+    }
+    self.first_seen.values().any(|&t| now.saturating_sub(t) >= HOLD)
+  }
 }
 
 /// Whether an image reference names `helper`, with any registry, tag or digest.
@@ -127,34 +170,87 @@ mod tests {
 
   #[test]
   fn established_ipv4_counts() {
-    assert!(has_established_to(TCP, 8080));
+    assert_eq!(established_to(TCP, 8080), vec![49773]);
   }
 
   #[test]
   fn established_tcp6_counts() {
-    assert!(has_established_to(&tcp6("1F90", "01"), 8080));
+    assert_eq!(established_to(&tcp6("1F90", "01"), 8080), vec![49018]);
   }
 
   #[test]
   fn close_wait_does_not_count() {
-    assert!(!has_established_to(&tcp6("1F90", "08"), 8080));
-    assert!(!has_established_to(&TCP.replace(" 01 ", " 06 "), 8080)); // TIME_WAIT
+    assert!(established_to(&tcp6("1F90", "08"), 8080).is_empty());
+    assert!(established_to(&TCP.replace(" 01 ", " 06 "), 8080).is_empty()); // TIME_WAIT
   }
 
   #[test]
   fn other_port_does_not_count() {
-    assert!(!has_established_to(TCP, 8081));
-    assert!(!has_established_to(&tcp6("0016", "01"), 8080));
+    assert!(established_to(TCP, 8081).is_empty());
+    assert!(established_to(&tcp6("0016", "01"), 8080).is_empty());
     // A local socket on 8080, listening or connected to elsewhere, isn't a connection to it.
-    let local_only: String = TCP.lines().take(2).map(|l| format!("{l}\n")).collect();
-    assert!(!has_established_to(
-      &local_only.replace(":0016 00000000:0000 0A", ":1F90 00000000:0000 0A"),
-      8080
-    ));
-    assert!(!has_established_to(
-      &TCP.replace("030012AC:C93C 020012AC:1F90", "030012AC:1F90 020012AC:C93C"),
-      8080
-    ));
+    let local_only: String = TCP
+      .lines()
+      .take(2)
+      .map(|l| {
+        format!(
+          "{l}
+"
+        )
+      })
+      .collect();
+    assert!(
+      established_to(
+        &local_only.replace(":0016 00000000:0000 0A", ":1F90 00000000:0000 0A"),
+        8080
+      )
+      .is_empty()
+    );
+    assert!(
+      established_to(
+        &TCP.replace("030012AC:C93C 020012AC:1F90", "030012AC:1F90 020012AC:C93C"),
+        8080
+      )
+      .is_empty()
+    );
+  }
+
+  fn ms(n: u64) -> Duration {
+    Duration::from_millis(n)
+  }
+
+  #[test]
+  fn a_connection_counts_once_it_has_held() {
+    let mut held = Held::default();
+    let one: HashSet<u64> = [7].into();
+    assert!(!held.update(ms(0), &one));
+    assert!(!held.update(ms(500), &one));
+    assert!(held.update(ms(1_000), &one));
+  }
+
+  #[test]
+  fn brief_connections_never_count() {
+    // A probe every second through Docker's proxy while the app starts: a new socket each time, each gone by the next
+    // check.
+    let mut held = Held::default();
+    for (i, t) in [0, 500, 1_000, 1_500, 2_000].iter().enumerate() {
+      let probe: HashSet<u64> = if i % 2 == 0 {
+        [100 + i as u64].into()
+      } else {
+        HashSet::new()
+      };
+      assert!(!held.update(ms(*t), &probe));
+    }
+  }
+
+  #[test]
+  fn a_dropped_connection_starts_over() {
+    let mut held = Held::default();
+    let one: HashSet<u64> = [7].into();
+    held.update(ms(0), &one);
+    held.update(ms(500), &HashSet::new());
+    assert!(!held.update(ms(1_000), &one)); // seen again at 1 s, but not held since 0
+    assert!(held.update(ms(2_000), &one));
   }
 
   const CONTAINERS: &str = r#"[{"Id":"a1","Names":["/coolify-sentinel"],"Image":"ghcr.io/coollabsio/sentinel:1.1.3","ImageID":"sha256:81f8","Command":"/app/sentinel"},{"Id":"b2","Names":["/px0q"],"Image":"coollabsio/coolify-helper:1.0.19","ImageID":"sha256:ab12"}]"#;

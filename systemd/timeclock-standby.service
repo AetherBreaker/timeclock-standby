@@ -1,13 +1,16 @@
 [Unit]
-Description=Timeclock standby screen: cog on the status page, terminal 7
-After=timeclock-status.service
+Description=Timeclock standby browser: cog on the status page, under the clock's window
+After=timeclock-display.service timeclock-status.service
+# Stops with sway and starts again with it.
+BindsTo=timeclock-display.service
 
 [Service]
 Type=simple
-# standby.sh quits the boot splash itself, once it has switched terminals.
+# Only once sway answers: a cog started on its socket before that crashes.
+ExecStartPre=/bin/sh -c 'until swaymsg -s /run/timeclock-display/sway.sock -t get_version >/dev/null 2>&1; do sleep 0.2; done'
 ExecStart=/opt/timeclock-standby/standby.sh
 Restart=always
 RestartSec=2
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timeclock-display.service

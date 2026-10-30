@@ -1,31 +1,10 @@
 #!/bin/sh
-# The standby display (timeclock-standby.service): cog on the status app's page, under cage, on terminal 7.
-# It checks in on its own terminal and hands back once cage is up (spec §3.3), like the kiosk does on terminal 1.
+# The standby browser (timeclock-standby.service): cog on the status page, the window tiled under the clock's (spec §3).
+# It starts on fallback.html from disk, which moves to the live page as soon as the status app answers, so it never
+# shows an error page.
 set -eu
-OWN=7 # the watcher's standby_vt
-export XDG_RUNTIME_DIR=/run/timeclock-standby
-# A restart keeps /run: seatd refuses to start over its old socket. Debian's own seatd.service is disabled (install.sh).
-rm -rf /run/seatd.sock "$XDG_RUNTIME_DIR"
-mkdir -m 700 "$XDG_RUNTIME_DIR"
-# Check in only from the clock's terminal or this one; a console in use (2-6) is waited out, never switched away from.
-while :; do
-  prev=$(sed 's/^tty//' /sys/class/tty/tty0/active)
-  case "$prev" in 1 | "$OWN") break ;; esac
-  sleep 1
-done
-# Graphics mode first (KDSETMODE), as seatd sets it a moment later anyway: the kernel then doesn't repaint the terminal as
-# a black text console on the switch, and the screen keeps its last picture (the clock, or the boot splash) until cage draws.
-perl -e 'open(C, "<", "/dev/tty$ARGV[0]") or die "tty$ARGV[0]: $!"; ioctl(C, 0x4B3A, 1) or die "KDSETMODE: $!";
-  open(T, "<", "/dev/tty0") or die "tty0: $!"; ioctl(T, 0x5606, $ARGV[0] + 0) or die "VT_ACTIVATE: $!";
-  ioctl(T, 0x5607, $ARGV[0] + 0) or die "VT_WAITACTIVE: $!"' "$OWN"
-# At boot the splash runs on terminal 1 and answers the switch above, so it quits only now. It leaves its terminal in
-# graphics mode with nothing answering switches, where the kernel ignores every switch away from it: back to text mode
-# (unseen from here), so handback.sh stays on this terminal and later switches work.
-if plymouth --ping 2>/dev/null; then
-  plymouth quit --retain-splash
-  perl -e 'open(C, "<", "/dev/tty$ARGV[0]") or die "tty$ARGV[0]: $!"; ioctl(C, 0x4B3A, 0) or die "KDSETMODE: $!"' "$prev"
-fi
-# cog: WPE WebKit's single-window browser, quick to start, black until its first paint. It opens the page from disk,
-# which moves to the live page as soon as the status app answers, so it never shows an error page.
-exec seatd-launch -- cage -s -- /opt/timeclock-standby/handback.sh "$OWN" "$prev" \
-  cog --platform=wl --bg-color=black --webprocess-failure=restart file:///opt/timeclock-standby/fallback.html
+# sway's Wayland socket, in the session's runtime directory; the unit starts this only once sway answers.
+export XDG_RUNTIME_DIR=/run/user/0
+for s in "$XDG_RUNTIME_DIR"/wayland-*; do [ -S "$s" ] && export WAYLAND_DISPLAY="${s##*/}"; done
+exec cog --gapplication-app-id=local.timeclock.Standby --platform=wl --bg-color=black --webprocess-failure=restart \
+  file:///opt/timeclock-standby/fallback.html

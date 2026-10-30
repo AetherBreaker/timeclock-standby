@@ -1,6 +1,6 @@
 [Unit]
-Description=Timeclock screen watcher: shows the clock's terminal or the standby screen's
-# First of the standby units: it never switches to an unclaimed terminal, so it can't take the boot splash's screen.
+Description=Timeclock screen watcher: shows or hides the clock window
+# First of the display units: it never switches away from the boot splash, so it can't take the splash's screen.
 Before=timeclock-status.service
 
 [Service]

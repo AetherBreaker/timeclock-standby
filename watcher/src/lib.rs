@@ -1,5 +1,6 @@
-//! The screen watcher: decides which terminal is on screen from what it observes, and talks to nothing.
+//! The screen watcher: shows or hides the clock window from what it observes, and nothing talks to it.
 pub mod config;
 pub mod decide;
 pub mod keys;
 pub mod observe;
+pub mod sway;

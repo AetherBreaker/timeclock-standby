@@ -2,7 +2,7 @@
 //! for N seconds, rescanning devices every 2 s as the watcher does.
 use std::path::Path;
 use std::time::{Duration, Instant};
-use timeclock_watcher::{keys::Inputs, observe};
+use timeclock_watcher::{keys::Inputs, observe, sway};
 
 fn main() {
   let args: Vec<String> = std::env::args().collect();
@@ -28,11 +28,11 @@ fn main() {
   }
   for _ in 0..10 {
     println!(
-      "active={:?} claimed1={} claimed7={} clock_connection={} helper={}",
+      "active={:?} claimed7={} clock_connections={:?} clock_window={:?} helper={}",
       observe::active_vt(),
-      observe::is_claimed(1),
       observe::is_claimed(7),
-      observe::clock_connection("firefox-esr", 8080),
+      observe::unit_connections("timeclock-clock.service", 8080),
+      sway::clock_window(Path::new("/run/timeclock-display/sway.sock"), "local.timeclock.Clock"),
       observe::helper_running(Path::new("/var/run/docker.sock"), "coollabsio/coolify-helper"),
     );
     std::thread::sleep(Duration::from_secs(1));
