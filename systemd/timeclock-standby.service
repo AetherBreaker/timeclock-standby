@@ -1,5 +1,5 @@
 [Unit]
-Description=Timeclock standby screen: Firefox on the status page, terminal 7
+Description=Timeclock standby screen: cog on the status page, terminal 7
 After=timeclock-status.service
 
 [Service]

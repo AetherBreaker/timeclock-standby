@@ -1,5 +1,5 @@
 #!/bin/sh
-# The standby display (timeclock-standby.service): Firefox on the status app's page, under cage, on terminal 7.
+# The standby display (timeclock-standby.service): cog on the status app's page, under cage, on terminal 7.
 # It checks in on its own terminal and hands back once cage is up (spec §3.3), like the kiosk does on terminal 1.
 set -eu
 OWN=7 # the watcher's standby_vt
@@ -7,10 +7,6 @@ export XDG_RUNTIME_DIR=/run/timeclock-standby
 # A restart keeps /run: seatd refuses to start over its old socket. Debian's own seatd.service is disabled (install.sh).
 rm -rf /run/seatd.sock "$XDG_RUNTIME_DIR"
 mkdir -m 700 "$XDG_RUNTIME_DIR"
-# A fresh profile every start: a kept one remembers the unclean stop and offers to restore the old session.
-PROFILE=/tmp/standby-profile
-rm -rf "$PROFILE"
-mkdir -p "$PROFILE"
 # Check in only from the clock's terminal or this one; a console in use (2-6) is waited out, never switched away from.
 while :; do
   prev=$(sed 's/^tty//' /sys/class/tty/tty0/active)
@@ -29,5 +25,7 @@ if plymouth --ping 2>/dev/null; then
   plymouth quit --retain-splash
   perl -e 'open(C, "<", "/dev/tty$ARGV[0]") or die "tty$ARGV[0]: $!"; ioctl(C, 0x4B3A, 0) or die "KDSETMODE: $!"' "$prev"
 fi
+# cog: WPE WebKit's single-window browser, quick to start, black until its first paint. It opens the page from disk,
+# which moves to the live page as soon as the status app answers, so it never shows an error page.
 exec seatd-launch -- cage -s -- /opt/timeclock-standby/handback.sh "$OWN" "$prev" \
-  firefox-esr --profile "$PROFILE" --kiosk http://127.0.0.1:8091/
+  cog --platform=wl --bg-color=black --webprocess-failure=restart file:///opt/timeclock-standby/fallback.html

@@ -13,7 +13,7 @@ RUNNING=false
 
 # The image's preseed installs these; a clock installed before the standby existed needs them now.
 missing=""
-for p in python3 perl cage seatd firefox-esr plymouth plymouth-themes librsvg2-bin; do
+for p in python3 perl cage seatd cog plymouth plymouth-themes librsvg2-bin; do
   dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "ok installed" || missing="$missing $p"
 done
 # shellcheck disable=SC2086 # one word per package
@@ -22,15 +22,15 @@ done
 systemctl disable seatd.service >/dev/null 2>&1 || true
 ! $RUNNING || systemctl stop seatd.service >/dev/null 2>&1 || true
 
-# The programs, the page, the standby display and its Firefox settings (the host's Firefox serves only the standby).
+# The programs, the page and the standby display.
 install -m 755 "$WATCHER" /usr/local/sbin/timeclock-watcher
 install -d /opt/timeclock-standby
 install -m 644 "$HERE"/status/status.py "$HERE"/status/standby.html "$HERE"/status/standby.css \
   "$HERE"/status/fallback.html /opt/timeclock-standby/
 install -m 755 "$HERE"/display/standby.sh "$HERE"/display/handback.sh /opt/timeclock-standby/
-install -D -m 644 "$HERE"/display/firefox/policies.json /usr/lib/firefox-esr/distribution/policies.json
-install -D -m 644 "$HERE"/display/firefox/autoconfig.js /usr/lib/firefox-esr/defaults/pref/autoconfig.js
-install -m 644 "$HERE"/display/firefox/standby.cfg /usr/lib/firefox-esr/standby.cfg
+# Before 0.2.0 the standby ran the host's Firefox, with these settings.
+rm -f /usr/lib/firefox-esr/distribution/policies.json /usr/lib/firefox-esr/defaults/pref/autoconfig.js \
+  /usr/lib/firefox-esr/standby.cfg
 
 # Settings: written once, then left to the clock.
 install -d /etc/timeclock
