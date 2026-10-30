@@ -4,8 +4,7 @@ After=timeclock-status.service
 
 [Service]
 Type=simple
-# Before cage takes the display; --retain-splash leaves the splash's picture up meanwhile.
-ExecStartPre=-/usr/bin/plymouth quit --retain-splash
+# standby.sh quits the boot splash itself, once it has switched terminals.
 ExecStart=/opt/timeclock-standby/standby.sh
 Restart=always
 RestartSec=2

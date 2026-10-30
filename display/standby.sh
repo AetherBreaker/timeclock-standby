@@ -22,5 +22,12 @@ done
 perl -e 'open(C, "<", "/dev/tty$ARGV[0]") or die "tty$ARGV[0]: $!"; ioctl(C, 0x4B3A, 1) or die "KDSETMODE: $!";
   open(T, "<", "/dev/tty0") or die "tty0: $!"; ioctl(T, 0x5606, $ARGV[0] + 0) or die "VT_ACTIVATE: $!";
   ioctl(T, 0x5607, $ARGV[0] + 0) or die "VT_WAITACTIVE: $!"' "$OWN"
+# At boot the splash runs on terminal 1 and answers the switch above, so it quits only now. It leaves its terminal in
+# graphics mode with nothing answering switches, where the kernel ignores every switch away from it: back to text mode
+# (unseen from here), so handback.sh stays on this terminal and later switches work.
+if plymouth --ping 2>/dev/null; then
+  plymouth quit --retain-splash
+  perl -e 'open(C, "<", "/dev/tty$ARGV[0]") or die "tty$ARGV[0]: $!"; ioctl(C, 0x4B3A, 0) or die "KDSETMODE: $!"' "$prev"
+fi
 exec seatd-launch -- cage -s -- /opt/timeclock-standby/handback.sh "$OWN" "$prev" \
   firefox-esr --profile "$PROFILE" --kiosk http://127.0.0.1:8091/
