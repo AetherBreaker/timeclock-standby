@@ -100,8 +100,42 @@ pub fn decide(cfg: &Config, obs: &Observation, state: &mut State) -> Action {
     state.not_live_since = Some(now);
   }
 
+  // The clock window: shown when live; hidden once it's been down for the delay (a connection blip shouldn't flicker
+  // the screen), or at once for a deploy in deploy-start mode. Within the delay, or with no window, left as it is.
+  let down_for = state.not_live_since.map_or(Duration::ZERO, |t| now.saturating_sub(t));
+  let want = if cfg.flip == Flip::DeployStart && obs.deploying {
+    Some(false)
+  } else if obs.clock_live {
+    Some(true)
+  } else {
+    (down_for >= cfg.standby_delay).then_some(false)
+  };
+  let window = match (obs.clock_window, want) {
+    (Some(shown), Some(want)) if shown != want => Some(if want { Action::ShowClock } else { Action::HideClock }),
+    (Some(_), Some(_)) => {
+      state.sent = None;
+      None
+    }
+    _ => None,
+  };
+  // A command not yet seen to take effect is sent again only after `RETRY`, while sway's tree catches up.
+  let send = |state: &mut State, action: Action| {
+    if state
+      .sent
+      .is_some_and(|(a, at)| a == action && now.saturating_sub(at) < RETRY)
+    {
+      return Action::Stay;
+    }
+    state.sent = Some((action, now));
+    action
+  };
+
   if obs.active_vt != cfg.display_vt {
-    // Off sway's terminal: a console, or the splash at boot. Back to sway's once hands-off ends.
+    // Off sway's terminal: a console, or the splash at boot. A clock that died meanwhile is hidden now, so the return
+    // shows the standby, never a dead page; showing waits for sway's terminal. Back to sway's once hands-off ends.
+    if window == Some(Action::HideClock) {
+      return send(state, Action::HideClock);
+    }
     match state.mode {
       Mode::Manual { since } => {
         // The key press counts as input, so idle time runs from the last input; `since` covers a missing one.
@@ -129,35 +163,7 @@ pub fn decide(cfg: &Config, obs: &Observation, state: &mut State) -> Action {
     return Action::Switch(cfg.display_vt);
   }
   state.mode = Mode::Auto;
-
-  let Some(shown) = obs.clock_window else {
-    return Action::Stay; // no clock window: the standby is what shows
-  };
-  // Shown when live; hidden once it's been down for the delay (a connection blip shouldn't flicker the screen), or at
-  // once for a deploy in deploy-start mode. Within the delay, left as it is.
-  let down_for = state.not_live_since.map_or(Duration::ZERO, |t| now.saturating_sub(t));
-  let want = if cfg.flip == Flip::DeployStart && obs.deploying {
-    false
-  } else if obs.clock_live {
-    true
-  } else if down_for >= cfg.standby_delay {
-    false
-  } else {
-    return Action::Stay;
-  };
-  if want == shown {
-    state.sent = None;
-    return Action::Stay;
-  }
-  let action = if want { Action::ShowClock } else { Action::HideClock };
-  if state
-    .sent
-    .is_some_and(|(a, at)| a == action && now.saturating_sub(at) < RETRY)
-  {
-    return Action::Stay;
-  }
-  state.sent = Some((action, now));
-  action
+  window.map_or(Action::Stay, |action| send(state, action))
 }
 
 #[cfg(test)]
@@ -465,6 +471,23 @@ mod tests {
     assert_eq!(decide(&c, &o(7_000), &mut s), Action::Switch(7)); // didn't land: asked again
     // It lands: no settling, the window rules run at once.
     assert_eq!(decide(&c, &live(7_100), &mut s), Action::ShowClock);
+  }
+
+  #[test]
+  fn a_clock_that_dies_during_a_console_visit_is_hidden_before_the_return() {
+    // Hidden while the console still shows, so the return shows the standby, never a dead page for a tick.
+    let c = Config::default();
+    let mut s = state(&c);
+    decide(&c, &shown(live(0)), &mut s);
+    let o = |now, live_now| Observation {
+      clock_live: live_now,
+      last_input: Some(ms(1_000)),
+      last_vt_key: Some((ms(1_000), 2)),
+      ..console(shown(obs(now)), 2)
+    };
+    assert_eq!(decide(&c, &o(1_050, true), &mut s), Action::Stay); // into the console: hands off
+    assert_eq!(decide(&c, &o(10_000, false), &mut s), Action::Stay); // the clock dies: within the delay
+    assert_eq!(decide(&c, &o(13_000, false), &mut s), Action::HideClock); // still on the console
   }
 
   #[test]

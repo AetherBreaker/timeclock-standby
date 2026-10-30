@@ -71,12 +71,8 @@ fn main() {
       docker_checked = Some(Instant::now());
     }
     let Ok(active_vt) = observe::active_vt() else { continue };
-    // sway's tree only matters while its terminal shows; an unanswered socket reads as no clock window.
-    let clock_window = if active_vt == cfg.display_vt {
-      sway::clock_window(&cfg.sway_socket, &cfg.clock_app_id).unwrap_or(None)
-    } else {
-      None
-    };
+    // sway answers on a console too (it only stops drawing); an unanswered socket reads as no clock window.
+    let clock_window = sway::clock_window(&cfg.sway_socket, &cfg.clock_app_id).unwrap_or(None);
 
     let obs = Observation {
       now,
