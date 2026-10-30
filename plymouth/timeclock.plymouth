@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=Timeclock
-Description=Black with the clock's logo and Debian's spinner, matching the standby page
+Description=Black with the clock's logo and the spinner theme, matching the standby page
 ModuleName=two-step
 
 [two-step]

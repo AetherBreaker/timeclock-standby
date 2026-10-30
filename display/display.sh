@@ -23,4 +23,4 @@ if plymouth --ping 2>/dev/null; then
   plymouth quit --retain-splash
   perl -e 'open(C, "<", "/dev/tty1") or die "tty1: $!"; ioctl(C, 0x4B3A, 0) or die "KDSETMODE: $!"'
 fi
-exec sway -c /opt/timeclock-standby/sway.conf
+exec sway -c /usr/libexec/timeclock-standby/sway.conf
