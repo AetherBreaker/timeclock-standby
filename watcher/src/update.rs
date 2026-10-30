@@ -19,6 +19,9 @@ const STATE: &str = "/var/lib/timeclock-watcher";
 const SETTINGS: &str = "/var/lib/timeclock-watcher/host-update";
 /// The release being applied: the next start checks the host came up on it.
 const PENDING: &str = "/var/lib/timeclock-watcher/pending";
+/// Left in /run just before the reboot: the reboot splash then says a system update is installing (the plymouth-reboot
+/// drop-in, systemd/plymouth-reboot-update.conf).
+const UPDATING: &str = "/run/timeclock-host-updating";
 /// Releases that failed the check, never applied again; a newer one goes ahead.
 const BAD: &str = "/var/lib/timeclock-watcher/bad-releases";
 const DEFAULT_WINDOW: (u16, u16) = (3 * 60, 60);
@@ -418,6 +421,7 @@ pub fn run_updater(cfg: Config, start: Instant, last_input: Arc<AtomicU64>) {
         let digest = host.staged.map(|(d, _)| d).unwrap_or_default();
         eprintln!("host update: restarting into {digest}");
         let _ = fs::write(PENDING, format!("{digest}\n"));
+        let _ = fs::write(UPDATING, format!("{digest}\n"));
         if from_downloaded {
           run("bootc", &["upgrade", "--from-downloaded", "--apply"]).map(drop)
         } else {
