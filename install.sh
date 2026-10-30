@@ -20,6 +20,14 @@ for p in python3 perl sway swaybg cog pipewire wireplumber xdg-desktop-portal xd
 done
 # shellcheck disable=SC2086 # one word per package
 [ -z "$missing" ] || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $missing
+# Debian 13's cog 0.18.4 turns every mouse click into an auxclick, so page buttons react to touch only (cog #759): a
+# release ships Debian's 0.18.5 rebuilt for Debian 13 (cog/build.sh), installed over an older cog.
+for deb in "$HERE"/pkg/cog_*.deb; do
+  [ -f "$deb" ] || continue
+  if dpkg --compare-versions "$(dpkg-query -W -f='${Version}' cog 2>/dev/null)" lt "$(dpkg-deb -f "$deb" Version)"; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$deb"
+  fi
+done
 # sway takes the screen through logind's session (timeclock-display.service); a running seatd would come first.
 systemctl disable seatd.service >/dev/null 2>&1 || true
 ! $RUNNING || systemctl stop seatd.service >/dev/null 2>&1 || true

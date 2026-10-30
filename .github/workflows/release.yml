@@ -35,13 +35,17 @@ jobs:
       - name: uv run --frozen pytest
         run: uv run --frozen pytest
 
+      # Debian 13's cog 0.18.4 loses mouse clicks (cog #759): the release ships Debian's 0.18.5 rebuilt for Debian 13.
+      - name: docker run debian:trixie cog/build.sh
+        run: docker run --rm -v "$PWD:/w" -w /w debian:trixie sh cog/build.sh /w/pkg
+
       # The tarball's one folder is what a clock's installer unpacks and runs install.sh from.
       - name: tar timeclock-standby-<tag>.tar.gz, sha256sum
         run: |
           name="timeclock-standby-${GITHUB_REF_NAME}"
           mkdir -p "dist/$name/bin"
           cp watcher/target/x86_64-unknown-linux-musl/release/timeclock-watcher "dist/$name/bin/"
-          cp -r install.sh status display systemd config plymouth grub "dist/$name/"
+          cp -r install.sh status display systemd config plymouth grub pkg "dist/$name/"
           rm -rf "dist/$name/status/tests" "dist/$name/status/__pycache__"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
