@@ -18,6 +18,13 @@ gi.require_version("WebKit", "6.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, WebKit  # noqa: E402
 
 RETRY_MS = 1000
+# No pinch zoom (owner): a touch with two or more fingers has its default cancelled in every page, and WebKit only runs
+# its zoom gesture on touches the page didn't cancel. One-finger touches go through untouched.
+NO_PINCH = """
+for (const type of ["touchstart", "touchmove"]) {
+  document.addEventListener(type, (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false, capture: true });
+}
+"""
 
 
 def main() -> int:  # noqa: D103
@@ -27,7 +34,13 @@ def main() -> int:  # noqa: D103
   app = Gtk.Application(application_id=app_id, flags=Gio.ApplicationFlags.NON_UNIQUE)
 
   def activate(app: Gtk.Application) -> None:
-    view = WebKit.WebView()
+    content = WebKit.UserContentManager()
+    content.add_script(
+      WebKit.UserScript.new(
+        NO_PINCH, WebKit.UserContentInjectedFrames.ALL_FRAMES, WebKit.UserScriptInjectionTime.START, None, None
+      )
+    )
+    view = WebKit.WebView(user_content_manager=content)
     black = Gdk.RGBA()
     black.parse("black")
     view.set_background_color(black)
