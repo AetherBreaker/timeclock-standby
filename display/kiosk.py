@@ -93,9 +93,7 @@ def main() -> int:  # noqa: D103
   def activate(app: Gtk.Application) -> None:
     content = WebKit.UserContentManager()
     content.add_script(
-      WebKit.UserScript.new(
-        NO_PINCH, WebKit.UserContentInjectedFrames.ALL_FRAMES, WebKit.UserScriptInjectionTime.START, None, None
-      )
+      WebKit.UserScript.new(NO_PINCH, WebKit.UserContentInjectedFrames.ALL_FRAMES, WebKit.UserScriptInjectionTime.START, None, None)
     )
     view = WebKit.WebView(user_content_manager=content)
     black = Gdk.RGBA()
