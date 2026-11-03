@@ -1,8 +1,10 @@
 #!/usr/bin/python3
-"""The clock's kiosk browser: one WebKitGTK window with no browser UI, under its own Wayland app id, by which sway and
-the watcher tell the clock window from the standby's. sway places and shows the window; this only loads pages. A failed
-load goes back to the start page after a second, so no error page ever shows; a crashed web process reloads it. Until
-the first page has loaded, the window shows the boot splash (Splash) instead of its own white background.
+"""The clock's kiosk browser: one WebKitGTK window with no browser UI, under its own Wayland app id.
+
+sway and the watcher tell the clock window from the standby's by that id. sway places and shows the window; this only
+loads pages. A failed load goes back to the start page after a second, so no error page ever shows; a crashed web
+process reloads it. Until the first page has loaded, the window shows the boot splash (Splash) instead of its own white
+background.
 
 Usage: kiosk.py <app-id> <start-url>
 """
